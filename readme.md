@@ -20,6 +20,13 @@ The main class in this simulator is `AutonomousDriving`, which is a subclass of 
 
 - `export_history(self, path="")`: Exports the history of the environment to a CSV file.
 
+Main attributes of the environment:
+- `n_agents`: Number of cars in the environment.
+
+- `n_pedestrians`: Number of pedestrians in the environment.
+
+- `n_bumps`: Number of bumps in the environment.
+
 The parameters of the environment are the following:
 
 - `map` (default: 'small'): 
@@ -40,7 +47,8 @@ The parameters of the environment are the following:
 - `keepHistory` (default: False): 
     - If set to True, the simulator keeps a history of the environment. This includes the state and action at each timestep, as well as the subsequent state and reward. This history persists across environment resets. It has to be set to True to be able to use the export functionality.
 
-
+- `state_representation` (default: 'full_matrix'): 
+    - Defines the representation of the state. Options are 'full_matrix' and 'positional'. The 'full_matrix' representation includes the full state of the environment, as it represents the entity sitting in each cell. Positional representation only includes the position of the car, the pedestrians, and the bumps. In that order.
 ## Installation
 
 This project requires Python and it is built mainly upon the following Python libraries installed:

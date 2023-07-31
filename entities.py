@@ -13,7 +13,7 @@ class Pedestrian:
     """
 
     idx = 0
-
+    dead_cell = (-1, -1)
     @staticmethod
     def build_path_instance(pathing):
         # Start at the spawn point
@@ -53,12 +53,16 @@ class Pedestrian:
 
         self.id = id if id is not None else Pedestrian.idx
         Pedestrian.idx += 1
+        self.logger = logging.getLogger('pedestrian_{}'.format(self.id))
+        self.logger.setLevel(logging.INFO)
+        self.logger.addHandler(logging.StreamHandler(stream=sys.stdout))
 
         self.spawn = spawn_point
         self.pos = spawn_point
         self.last_pos = spawn_point
         self.respawn = respawn
         self.delay = 0
+        self.dead = False
 
         self.in_crosswalk = None
         self.behavior = behavior
@@ -140,11 +144,16 @@ class Pedestrian:
         """
         :return: The pedestrian's next position. If there isn't a next move, return None. Pedestrian should be removed
         """
+        if self.dead:
+            self.pos = Pedestrian.dead_cell
+            # print("Pedestrian", self.id, {'events': 'dead'})
+            return False, {'events': 'dead'}
         self.last_pos = self.pos
         info = {}
         ret = getattr(self, "_" + self.behavior)(map_status, info)
         self.delay -= 1
         self.in_crosswalk = map_status[self.pos] == MapManager.entities["crosswalk"]["char"]
+        # print("Pedestrian", self.id, info)
         return ret, info
 
     def __eq__(self, other):
@@ -193,6 +202,7 @@ class Car:
         self.move_vectors = np.array(self.move_vectors)
 
         self.speed = 0
+        self.last_pos = self.pos
         pass
 
     def step(self, map_status, map_sketch, action, pedestrians):
@@ -212,6 +222,7 @@ class Car:
         """
         info = {
             "fatalities": 0,
+            "injuries": 0,
             "bumps": 0,
         }
 
@@ -241,14 +252,19 @@ class Car:
         # Dynamic events
 
         if MapManager.entities["pedestrian"]["char"] in dynamic_trajectory_hits:
+            for i in range(len(pedestrians)):
+                if np.any([pedestrians[i] == t for t in trajectory]) and not pedestrians[i].dead:
+                    pedestrians[i].dead = True
             info["fatalities"] = dynamic_trajectory_hits.count(MapManager.entities["pedestrian"]["char"])
             events.add("overrun")
 
         if next_position_entity == MapManager.entities["car"]["char"]:
             events.add("crash")
 
-        if np.any([np.array_equal(next_position, pedestrians[i].last_pos) for i in range(len(pedestrians))]):
-            events.add("danger")
+        for i in range(len(pedestrians)):
+            if np.any([np.array_equal(pedestrians[i],t) for t in trajectory]):
+                info["injuries"] += 1
+                events.add("danger")
 
         # Static events
         if MapManager.entities["bump"]["char"] in static_trajectory_hits:
@@ -265,6 +281,7 @@ class Car:
             events.add("moved")
 
         if "moved" in events:
+            self.last_pos = self.pos
             self.pos = next_position
 
         self.logger.debug(f"Car Step: {self.step_count} Events: {events}")

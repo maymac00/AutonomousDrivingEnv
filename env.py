@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 
 class AutonomousDriving(gym.Env):
     def __init__(self, map='small', n_agents=1, fixed_spawn=True, pedestrian_behavior='hardcoded',
-                 speed_penalizing=False, keepHistory=False):
+                 speed_penalizing=False, keepHistory=False, state_representation='full_matrix'):
         """
         :param map: Folder name of the map to be used. Must be in map_sketches folder
         :param n_agents: Number of agents in the environment. Number of cars
@@ -27,17 +27,17 @@ class AutonomousDriving(gym.Env):
 
         self.action_space = gym.spaces.Discrete(9)
         self.map = Map(map)
+        self.last_frame = None
 
-        self.observation_space = gym.spaces.Box(low=0, high=MapManager.n_entities, shape=(self.map.h, self.map.w),
-                                                dtype=np.uint8)
+        self.state_representation = state_representation
 
         # Get position of fixed entities. Maybe not necessary to store them as attributes
-        self.bump_positions = np.argwhere(self.map == MapManager.entities['bump']['number'])
-        self.crosswalk_positions = np.argwhere(self.map == MapManager.entities['crosswalk']['number'])
+        self.bump_positions = np.argwhere(self.map["number"] == MapManager.entities['bump']['number']).tolist()
+        self.crosswalk_positions = np.argwhere(self.map["number"] == MapManager.entities['crosswalk']['number'])
         self.sidewalk_positions = np.argwhere(
-            self.map == MapManager.entities['sidewalk']['number'])  # May not be necessary
-        self.goal_positions = np.argwhere(self.map == MapManager.entities['goal']['number'])
-        self.road_positions = np.argwhere(self.map == MapManager.entities['road']['number'])
+            self.map["number"] == MapManager.entities['sidewalk']['number'])  # May not be necessary
+        self.goal_positions = np.argwhere(self.map["number"] == MapManager.entities['goal']['number'])
+        self.road_positions = np.argwhere(self.map["number"] == MapManager.entities['road']['number'])
 
         self.fixed_spawn = fixed_spawn
         self.n_agents = n_agents
@@ -47,8 +47,21 @@ class AutonomousDriving(gym.Env):
         self.pedestrians = None
         self.pedestrian_behavior = pedestrian_behavior
         self.n_pedestrians = json.load(open(MapManager.map_dir + map + '/description.json'))['n_pedestrians']
+        Pedestrian.dead_cell = json.load(open(MapManager.map_dir + map + '/description.json'))['dead_cell']
+        self.n_bumps = json.load(open(MapManager.map_dir + map + '/description.json'))['n_bumps']
 
         self.cars = None
+
+        if state_representation == 'full_matrix':
+            self.observation_space = gym.spaces.Box(low=0, high=MapManager.n_entities, shape=(self.map.h, self.map.w),
+                                                    dtype=np.uint8)
+        elif state_representation == 'tabular':
+            # TODO: This is definitely not the way to do this. It's just a placeholder
+            self.observation_space = gym.spaces.Discrete(MapManager.n_entities ** (self.map.h * self.map.w))
+        elif state_representation == 'positional':
+            point_space = gym.spaces.Tuple((gym.spaces.Discrete(self.map.h), gym.spaces.Discrete(self.map.w)))
+            self.observation_space = gym.spaces.Tuple([point_space for _ in range(self.n_pedestrians + self.n_agents)])
+
         self.reset()
 
     def step(self, action, verbose=0):
@@ -56,6 +69,7 @@ class AutonomousDriving(gym.Env):
         # First move pedestrians, then cars. So the car is who overtakes the pedestrian not the other way around
 
         # Print initial positions of cars and pedestrians
+        self.last_frame = self.char_map_status()
         init_state = [self.cars[0].pos, *[p.pos for p in self.pedestrians]]
         if verbose > 0:
             print("Initial positions: CAR", self.cars[0].pos, "PEDESTRIANS", [p.pos for p in self.pedestrians])
@@ -70,14 +84,15 @@ class AutonomousDriving(gym.Env):
             keep_going, info = pedestrian.step(self.map["char"])
             pedestrian_info[k] = info
             if not keep_going:
-                to_remove.append(pedestrian)
+                # We keep the pedestrian on the list, it will print in the dead cell.
+                pass # to_remove.append(pedestrian)
 
         for pedestrian in to_remove:
             self.pedestrians.remove(pedestrian)
 
         # Move cars TODO: Extend to MA. Add penalty for event crash
         # Car moves. Returns events.
-        events, car_info = self.cars[0].step(self.char_map_status(), self.map["char"], action, self.pedestrians)
+        events, car_info = self.cars[0].step(self.last_frame, self.map["char"], action, self.pedestrians)
         done = False
         # Reward function based on events
         reward_vec = np.zeros(3)
@@ -97,7 +112,11 @@ class AutonomousDriving(gym.Env):
         # External safety reward
         if 'overrun' in events:
             speed_penalty = self.cars[0].speed if self.speed_penalizing else 1
-            reward_vec[2] += -10 * speed_penalty
+            reward_vec[2] += -10 * speed_penalty * car_info['fatalities']
+
+        if 'danger' in events:
+            speed_penalty = self.cars[0].speed if self.speed_penalizing else 1
+            reward_vec[2] += -10 * speed_penalty * 0.3 * car_info['injuries']  # 0.3 as non lethal multiplier
 
         observation = self.get_observation()
         info = {'car': car_info, 'pedestrians': pedestrian_info}
@@ -106,7 +125,6 @@ class AutonomousDriving(gym.Env):
         if self.keepHistory:
             # TODO: Deliberate what we want to keep in history apart from s and s'
             # TODO: Deliberate what we do in case of deletion of entities
-            np.array(init_state).reshape(-1)
             self.history.append(np.hstack([np.array(init_state).reshape(-1), action, np.array(final_state).reshape(-1), reward_vec]))
 
         if verbose > 1:
@@ -129,20 +147,26 @@ class AutonomousDriving(gym.Env):
             # TODO: Do random spawn in the road
             raise NotImplementedError
 
-        # Pedestrian spawn points. Should we use random spawn?
+        # Pedestrian spawn.
         Pedestrian.idx = 0
-        self.pedestrians = [Pedestrian((0, 0), self.pedestrian_behavior) for i in
+        self.pedestrians = [Pedestrian(Pedestrian.dead_cell, self.pedestrian_behavior) for i in
                             range(self.n_pedestrians)]
         return self.get_observation()
 
     def get_observation(self):
-        # Get a copy of number map and overwrite the positions of the dynamic entities
-        observation = self.map["number"].copy()
-        for pedestrian in self.pedestrians:
-            observation[pedestrian.pos] = MapManager.entities['pedestrian']['number']
-        for car in self.cars.values():
-            observation[car.pos] = MapManager.entities['car']['number']
-        return observation
+
+        if self.state_representation == 'full_matrix':
+            # Get a copy of number map and overwrite the positions of the dynamic entities
+            observation = self.map["number"].copy()
+            for pedestrian in self.pedestrians:
+                observation[pedestrian.pos] = MapManager.entities['pedestrian']['number']
+            for car in self.cars.values():
+                observation[car.pos] = MapManager.entities['car']['number']
+            return observation
+        elif self.state_representation == 'tabular':
+            raise NotImplementedError
+        elif self.state_representation == 'positional':
+            return np.array([car.pos for car in self.cars.values()] + [pedestrian.pos for pedestrian in self.pedestrians] + list(self.bump_positions)).reshape(-1)
 
     def char_map_status(self):
         """

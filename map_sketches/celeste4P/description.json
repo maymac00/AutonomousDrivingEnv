@@ -1,4 +1,5 @@
 {
   "n_pedestrians": 4,
-  "n_bumps": 8
+  "n_bumps": 8,
+  "dead_cell": [0, 0]
 }

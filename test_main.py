@@ -2,10 +2,11 @@ from env import AutonomousDriving
 
 if __name__ == '__main__':
     env = AutonomousDriving(
-        map="celeste8P",
+        map="filippo",
         n_agents=1,
         fixed_spawn=True,
         keepHistory=True,
+        state_representation="positional",
     )
 
     number_of_episodes = 5
@@ -14,13 +15,14 @@ if __name__ == '__main__':
     for i in range(number_of_episodes):
         obs = env.reset()
         for j in range(number_of_steps):
-            env.render()
+            #env.render()
 
             # Select action
             action = env.action_space.sample() # Actions are integers from 0 to 8, see Car class in entities.py
 
             obs, reward, done, info = env.step(action, verbose=0)
-
+            if reward[2] < -14:
+                print("Collision detected")
             if done:
                 break
         print("Episode {} finished".format(i))
