@@ -19,7 +19,7 @@ if __name__ == '__main__':
 
             # Select action
             action = env.action_space.sample() # Actions are integers from 0 to 8, see Car class in entities.py
-            action = int(input("Insert action: "))
+            # action = int(input("Insert action: "))
             obs, reward, done, info = env.step(action, verbose=0)
             if reward[2] < -10:
                 print("Collision detected")
