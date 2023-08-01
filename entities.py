@@ -182,7 +182,7 @@ class Car:
     STAY = 8
     idx = 0
 
-    def __init__(self, spawn_point, id=None, logger_level=logging.INFO):
+    def __init__(self, spawn_point, id=None, logger_level=logging.DEBUG):
         self.pos = spawn_point
         self.id = id if id is not None else Car.idx
         Car.idx += 1
@@ -194,9 +194,9 @@ class Car:
         self.step_count = 0
 
         # Speed 1
-        self.move_vectors = [(1, 0), (-1, 0), (0, -1), (0, 1)]
+        self.move_vectors = [(-1, 0), (1, 0), (0, -1), (0, 1)]
         # Speed 2
-        self.move_vectors += [(2, 0), (-2, 0), (0, -2), (0, 2)]
+        self.move_vectors += [(-2, 0), (2, 0), (0, -2), (0, 2)]
         # Stay
         self.move_vectors += [(0, 0)]
         self.move_vectors = np.array(self.move_vectors)
@@ -245,26 +245,28 @@ class Car:
             return events, info
 
         next_position_entity = map_status[*next_position]
-        trajectory = self.trajectory(move)
-        static_trajectory_hits = [map_sketch[*pos] for pos in trajectory]
+        trajectory = [self.pos] + self.trajectory(move)
+        static_trajectory_hits = [map_sketch[*pos] for pos in trajectory[1:]]
         dynamic_trajectory_hits = [map_status[*pos] for pos in trajectory]
         events = set()
-        # Dynamic events
 
+        # Dynamic events
         if MapManager.entities["pedestrian"]["char"] in dynamic_trajectory_hits:
             for i in range(len(pedestrians)):
-                if np.any([pedestrians[i] == t for t in trajectory]) and not pedestrians[i].dead:
+                if np.any([np.array_equal(pedestrians[i].pos, t) for t in trajectory]) and not pedestrians[i].dead:
                     pedestrians[i].dead = True
-            info["fatalities"] = dynamic_trajectory_hits.count(MapManager.entities["pedestrian"]["char"])
-            events.add("overrun")
+                    info["fatalities"] = dynamic_trajectory_hits.count(MapManager.entities["pedestrian"]["char"])
+                    events.add("overrun")
+                    events.add("moved")
 
         if next_position_entity == MapManager.entities["car"]["char"]:
             events.add("crash")
 
         for i in range(len(pedestrians)):
-            if np.any([np.array_equal(pedestrians[i],t) for t in trajectory]):
+            if np.any([np.array_equal(pedestrians[i].last_pos, t) for t in trajectory]):
                 info["injuries"] += 1
                 events.add("danger")
+                events.add("moved")
 
         # Static events
         if MapManager.entities["bump"]["char"] in static_trajectory_hits:

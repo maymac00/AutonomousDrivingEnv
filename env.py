@@ -90,9 +90,10 @@ class AutonomousDriving(gym.Env):
         for pedestrian in to_remove:
             self.pedestrians.remove(pedestrian)
 
+        map_status = self.char_map_status()
         # Move cars TODO: Extend to MA. Add penalty for event crash
         # Car moves. Returns events.
-        events, car_info = self.cars[0].step(self.last_frame, self.map["char"], action, self.pedestrians)
+        events, car_info = self.cars[0].step(map_status, self.map["char"], action, self.pedestrians)
         done = False
         # Reward function based on events
         reward_vec = np.zeros(3)
@@ -107,7 +108,7 @@ class AutonomousDriving(gym.Env):
         # Internal safety reward
         if 'bump' in events:
             speed_penalty = self.cars[0].speed if self.speed_penalizing else 1
-            reward_vec[1] += -10 * speed_penalty
+            reward_vec[1] += -10 * speed_penalty * car_info['bumps']
 
         # External safety reward
         if 'overrun' in events:
