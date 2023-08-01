@@ -182,7 +182,7 @@ class Car:
     STAY = 8
     idx = 0
 
-    def __init__(self, spawn_point, id=None, logger_level=logging.DEBUG):
+    def __init__(self, spawn_point, id=None, logger_level=logging.INFO):
         self.pos = spawn_point
         self.id = id if id is not None else Car.idx
         Car.idx += 1
