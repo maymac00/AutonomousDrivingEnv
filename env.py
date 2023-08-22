@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 
 class AutonomousDriving(gym.Env):
     def __init__(self, map='small', n_agents=1, fixed_spawn=True, pedestrian_behavior='hardcoded',
-                 speed_penalizing=False, keepHistory=False, state_representation='full_matrix'):
+                 speed_penalizing=False, keepHistory=False, state_representation='full_matrix', value_system='iev'):
         """
         :param map: Folder name of the map to be used. Must be in map_sketches folder
         :param n_agents: Number of agents in the environment. Number of cars
@@ -20,6 +20,8 @@ class AutonomousDriving(gym.Env):
         :param pedestrian_behavior: Defines the behavior of the pedestrians. Only hardcoded implemented
         :param speed_penalizing: Penalize speed in the reward function. Safety issues are magnified at higher speeds
         :param keepHistory: Keeps track of the history of the environment. It works across resets.
+        :param state_representation: How to represent the state. Options: 'full_matrix', 'tabular', 'positional'
+        :param value_system: How to prioritize the multiple objectives.
         """
         super(AutonomousDriving, self).__init__()
 
@@ -30,6 +32,22 @@ class AutonomousDriving(gym.Env):
         self.last_frame = None
 
         self.state_representation = state_representation
+        # Set ethical weights for scalarization
+        self.value_system = value_system
+        self.we = np.ones(3)
+        if value_system == 'ive':
+            self.we = np.array([1.0, 0.505, 0.0013])
+        elif value_system == 'iev':
+            self.we = np.array([1.0, 1.37, 5.54])
+        elif value_system == 'vie':
+            self.we = np.array([1.0, 0.097, 0.000001])
+        elif value_system == 'vei':
+            self.we = np.array([1.0, 0.027, 0.093])
+        elif value_system == 'eiv':
+            self.we = np.array([1.0, 0.65, 2.942])
+        elif value_system == 'evi':
+            self.we = np.array([1.0, 0.0032, 1.24])
+
 
         # Get position of fixed entities. Maybe not necessary to store them as attributes
         self.bump_positions = np.argwhere(self.map["number"] == MapManager.entities['bump']['number']).tolist()
@@ -119,6 +137,8 @@ class AutonomousDriving(gym.Env):
             speed_penalty = self.cars[0].speed if self.speed_penalizing else 1
             reward_vec[2] += -10 * speed_penalty * 0.3 * car_info['injuries']  # 0.3 as non lethal multiplier
 
+        reward = np.dot(reward_vec, self.we)
+
         observation = self.get_observation()
         info = {'car': car_info, 'pedestrians': pedestrian_info}
 
@@ -134,7 +154,7 @@ class AutonomousDriving(gym.Env):
         if verbose > 0:
             print("Final positions: CAR", self.cars[0].pos, "PEDESTRIANS", [p.pos for p in self.pedestrians])
 
-        return observation, reward_vec, done, info
+        return observation, reward, done, info
 
     def reset(self):
         # Spawn dynamic entities

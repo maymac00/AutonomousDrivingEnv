@@ -49,6 +49,8 @@ The parameters of the environment are the following:
 
 - `state_representation` (default: 'full_matrix'): 
     - Defines the representation of the state. Options are 'full_matrix' and 'positional'. The 'full_matrix' representation includes the full state of the environment, as it represents the entity sitting in each cell. Positional representation only includes the position of the car, the pedestrians, and the bumps. In that order.
+- `value_system` (default: 'iev'):
+    - Defines the value system to be used. The order of the objectives prioritization is specified in a string using the initial of each value. Therefore, the options are the 6 permutations of the characters 'v' (velocity), 'i' (internal safety), and 'e' (external safety). For example, 'iev' means that the internal safety is prioritized over the external safety, which is prioritized over the velocity. The default value is 'iev'.
 ## Installation
 
 This project requires Python and it is built mainly upon the following Python libraries installed:

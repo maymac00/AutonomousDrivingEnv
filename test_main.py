@@ -7,6 +7,7 @@ if __name__ == '__main__':
         fixed_spawn=True,
         keepHistory=True,
         state_representation="positional",
+        value_system="iev"
     )
 
     number_of_episodes = 100
